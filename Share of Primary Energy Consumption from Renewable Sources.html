@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Share of Renewable Energy Map</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        .country {
+            stroke: #000;
+            stroke-width: 0.5px;
+        }
+        .slider {
+            margin: 20px;
+        }
+        .legend {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .title {
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+            text-anchor: middle;
+        }
+        .legend-tip {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            text-anchor: middle;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Title -->
+    <h2 style="text-align: left;">Share of Primary Energy Consumption from Renewable Sources, 1965-2023</h2>
+
+    <div class="slider">
+        <input type="range" id="yearSlider" min="1965" max="2023" step="1" value="2023">
+        <label for="yearSlider" id="yearLabel">2023</label>
+    </div>
+
+    <svg width="960" height="600"></svg>
+
+    <script>
+        const width = 960;
+        const height = 600;
+        const svg = d3.select("svg");
+        const projection = d3.geoMercator().scale(150).translate([width / 2, height / 1.5]);
+        const path = d3.geoPath().projection(projection);
+
+        // Color scale for renewable energy share
+        const colorScale = d3.scaleQuantize()
+            .domain([0, 70]) // Adjust according to the data range (0-70% renewable)
+            .range(d3.schemeGreens[7]); // Using D3's predefined color schemes
+
+        // Load map data (GeoJSON format)
+        d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson").then(function(world) {
+
+            // Draw the world map
+            svg.selectAll("path")
+                .data(world.features)
+                .enter().append("path")
+                .attr("d", path)
+                .attr("class", "country")
+                .style("fill", "#ccc"); // Default color before loading data
+
+            // Define the dimensions for the legend
+            const legendWidth = 300;
+            const legendHeight = 10;
+            const numStops = 6;  // Number of gradient steps
+
+            // Create a 'defs' block for the gradient
+            const defs = svg.append("defs");
+
+            const legendGradient = defs.append("linearGradient")
+                .attr("id", "legendGradient")
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "100%").attr("y2", "0%");
+
+            // Add gradient stops manually
+            d3.schemeGreens[numStops].forEach((color, i) => {
+                legendGradient.append("stop")
+                    .attr("offset", `${(i / (numStops - 1)) * 100}%`)
+                    .attr("stop-color", color);
+            });
+
+            // Draw the legend rectangle with the gradient
+            svg.append("rect")
+                .attr("width", legendWidth)
+                .attr("height", legendHeight)
+                .attr("x", width - legendWidth - 20)
+                .attr("y", height - 30)  
+                .style("fill", "url(#legendGradient)");
+
+            // Manually add text labels for the gradient scale
+            const legendScaleValues = [0, 70];  // Adjust as needed
+            legendScaleValues.forEach((d, i) => {
+                svg.append("text")
+                    .attr("x", width - legendWidth - 20 + (i / (legendScaleValues.length - 1)) * legendWidth ) // Adjust the 70% label
+                    .attr("y", height - 5)
+                    .attr("text-anchor", "middle")
+                    .text(d + "%");
+            });
+
+            // Add a tip below the legend
+            svg.append("text")
+                .attr("x", width - legendWidth - 20 + legendWidth / 2)
+                .attr("y", height - 40)  
+                .attr("text-anchor", "middle")
+                .attr("class", "legend-tip")
+                .text("Percentage of energy consumption from renewable sources");
+
+            // Load the energy data (processed CSV data)
+            d3.csv("processed_renewable_share_energy.csv").then(function(data) {
+
+                // Update function for year slider
+                function updateMap(year) {
+                    // Filter data by year
+                    const yearData = data.filter(d => +d.Year === year);
+
+                    // Map the data by country code
+                    const energyByCountry = {};
+                    yearData.forEach(d => {
+                        energyByCountry[d.Code] = +d["Renewables (% equivalent primary energy)"];
+                    });
+
+                    // Update the map colors based on data
+                    svg.selectAll("path")
+                        .transition()
+                        .duration(200)
+                        .style("fill", d => {
+                            const countryCode = d.id; // Assuming country code is in the id property
+                            const value = energyByCountry[countryCode];
+                            return value ? colorScale(value) : "#ccc";
+                        });
+                }
+
+                // Initial map rendering for the default year
+                let currentYear = 1965;
+                const endYear = 2023;     
+                updateMap(currentYear);
+
+                // Set an interval to update the year slider automatically
+                const yearInterval = setInterval(() => {
+                    if (currentYear < endYear) {
+                        currentYear++;
+                        d3.select("#yearSlider").property("value", currentYear);
+                        d3.select("#yearLabel").text(currentYear);
+                        updateMap(currentYear);
+                    } else {
+                        clearInterval(yearInterval);  // Stop the interval when 2023 is reached
+                    }
+                }, 200);  // Update every second
+
+            });
+
+        });
+
+    </script>
+
+</body>
+</html>
