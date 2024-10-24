@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combined Electric vs Non-Electric Cars Data</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+        }
+        .bar rect {
+            fill-opacity: 0.8;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: 120px;
+            height: auto;
+            padding: 5px;
+            font: 12px sans-serif;
+            background: lightsteelblue;
+            border: 0px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+        .yearLabel {
+            font-size: 30px;
+            font-weight: bold;
+            text-anchor: middle;
+        }
+        .slider {
+            margin: 20px;
+        }
+        .legend {
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+        }
+        .legend rect {
+            width: 18px;
+            height: 18px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Legends for both charts -->
+   
+
+    <h2 style="text-align: center;">Electric vs Non-Electric Cars</h2>
+    <div id="legend" style="text-align: center; margin-bottom: 20px;">
+        <span style="color:#228B22;">&#9632;</span> Electric cars sold 
+        <span style="margin-left:20px; color:#8B4513;">&#9632;</span> Non-electric car sales
+    </div>
+    <div id="racingBarChart"></div> 
+    
+    <div id="stackedBarChart"></div>
+
+    <script>
+        const margin = { top: 40, right: 40, bottom: 50, left: 150 };
+        const width = 960 - margin.left - margin.right;
+        const height = 500 - margin.top - margin.bottom;
+
+        const svgRacing = d3.select("#racingBarChart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const svgStacked = d3.select("#stackedBarChart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Correct color settings: Non-electric (brown) and Electric (green)
+        const colors = { 
+            "Electric cars sold": "#228B22",  // Green
+            "Non-electric car sales": "#8B4513"  // Brown
+        };
+
+        // Load the data for both charts
+        d3.csv("car-sales.csv").then(function(data) {
+
+            // Parse the data
+            data.forEach(d => {
+                d.Year = +d.Year;
+                d["Electric cars sold"] = +d["Electric cars sold"] || 0;  // Default to 0 if missing
+                d["Non-electric car sales"] = +d["Non-electric car sales"] || 0;  // Default to 0 if missing
+            });
+
+            // Racing Bar Chart Data and Settings
+            const groupedData = d3.group(data, d => d.Year);
+
+            const years = Array.from(groupedData.keys()).sort();
+
+            const racingColor = d3.scaleOrdinal()
+                .domain(["Electric cars", "Non-electric cars"])
+                .range([colors["Electric cars sold"], colors["Non-electric car sales"]]);
+
+            const xScaleRacing = d3.scaleLinear()
+                .range([0, width]);
+
+            const yScaleRacing = d3.scaleBand()
+                .domain(["Electric cars", "Non-electric cars"])
+                .range([0, height / 2])
+                .padding(0.2);
+
+            const xAxisRacing = svgRacing.append("g")
+                .attr("transform", `translate(0,${height / 2})`);
+
+            const yAxisRacing = svgRacing.append("g")
+                .call(d3.axisLeft(yScaleRacing));
+
+            const yearLabelRacing = svgRacing.append("text")
+                .attr("class", "yearLabel")
+                .attr("x", width - 140)
+                .attr("y", -1)
+                .attr("text-anchor", "middle")
+                .text(years[0]);
+
+            const barsGroupRacing = svgRacing.append("g")
+                .attr("class", "bars");
+
+            function updateRacing(year) {
+                const yearData = data.filter(d => d.Year === year);  // Only get data for the current year
+
+                // Calculate the sales for electric and non-electric cars for the selected year
+                const electricCarsSold = d3.sum(yearData, d => d["Electric cars sold"]);
+                const nonElectricCarsSold = d3.sum(yearData, d => d["Non-electric car sales"]);
+
+                const barsData = [
+                    { key: "Electric cars", value: electricCarsSold },
+                    { key: "Non-electric cars", value: nonElectricCarsSold }
+                ];
+
+                const maxValue = Math.max(...barsData.map(d => d.value));
+
+                // Ensure valid values for the scale domain
+                if (!isNaN(maxValue)) {
+                    xScaleRacing.domain([0, maxValue]);
+
+                    const bars = barsGroupRacing.selectAll(".bar")
+                        .data(barsData);
+
+                    bars.enter().append("rect")
+                        .attr("class", "bar")
+                        .attr("y", d => yScaleRacing(d.key))
+                        .attr("height", yScaleRacing.bandwidth())
+                        .merge(bars)
+                        .transition()
+                        .duration(200)
+                        .attr("x", 0)
+                        .attr("width", d => xScaleRacing(d.value))
+                        .attr("fill", d => racingColor(d.key));
+
+                    xAxisRacing.transition().duration(200).call(d3.axisBottom(xScaleRacing).ticks(5));
+                    yearLabelRacing.text(year);
+                }
+            }
+
+            let yearIndex = 0;
+            function nextYearRacing() {
+                updateRacing(years[yearIndex]);
+                updateStacked(years[yearIndex]);  // Sync with the stacked bar chart
+              // Only increment yearIndex if it's not the last year
+             if (yearIndex < years.length - 1) {
+             yearIndex++;
+             }
+             
+            }
+
+            updateRacing(years[0]);
+            setInterval(nextYearRacing, 1000);  // Both charts update every second
+
+            // Stacked Bar Chart Data and Settings
+            const keys = ["Electric cars sold", "Non-electric car sales"];
+            const stackedData = d3.stack()
+                .keys(keys)(data.filter(d => d.Entity === "World"));
+
+            const xScaleStacked = d3.scaleBand()
+                .domain(years)
+                .range([0, width])
+                .padding(0.2);
+
+            const yScaleStacked = d3.scaleLinear()
+                .domain([0, d3.max(stackedData[stackedData.length - 1], d => d[1])])
+                .range([height, 0]);
+
+            const xAxisStacked = svgStacked.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScaleStacked).tickFormat(d3.format("d")));
+
+            const yAxisStacked = svgStacked.append("g")
+                .call(d3.axisLeft(yScaleStacked).ticks(10));
+
+            const barsGroupStacked = svgStacked.append("g")
+                .attr("class", "bars");
+
+            function updateStacked(selectedYear) {
+                const filteredData = data.filter(d => d.Year <= selectedYear);
+
+                const stackedData = d3.stack()
+                    .keys(keys)(filteredData.filter(d => d.Entity === "World"));
+
+                yScaleStacked.domain([0, d3.max(stackedData[stackedData.length - 1], d => d[1])]);
+
+                const bars = barsGroupStacked.selectAll("g")
+                    .data(stackedData, d => d.key);
+
+                bars.enter().append("g")
+                    .attr("fill", d => colors[d.key])
+                    .merge(bars)
+                    .selectAll("rect")
+                    .data(d => d)
+                    .join("rect")
+                    .attr("x", d => xScaleStacked(d.data.Year))
+                    .attr("y", d => yScaleStacked(d[1]))
+                    .attr("height", d => yScaleStacked(d[0]) - yScaleStacked(d[1]))
+                    .attr("width", xScaleStacked.bandwidth());
+
+                yAxisStacked.transition().duration(500).call(d3.axisLeft(yScaleStacked));
+            }
+
+            updateStacked(2010);  // Initial year
+        });
+    </script>
+
+</body>
+</html>
